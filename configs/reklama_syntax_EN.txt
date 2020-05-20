@@ -1,0 +1,63 @@
+This file contains the message syntax for the 'Reklama' plugin.
+
+Line format: mode type sound color autoresponder comparison "autoresponder pattern" "message"
+
+Mode:
+0 - show always
+any other digit - show only with the same value of the cvar 'reklama_mode'
+
+Type:
+0 - single line message
+1 - call the next line
+2 - call the next line + not for start (random start mode, see. RANDOM_START in .sma)
+3 - not for start (random start mode, see. RANDOM_START in .sma)
+
+Sound:
+0 - without sound
+1 - blip1
+2 - blip2
+3 - tutor_msg
+4 - button2
+5 - bell1
+6 - button3
+7 - button7
+8 - button9
+9 - elevbell1
+10 - train_use1
+11 - x_shoot1
+
+Color for !t:
+D - receiver team color
+W - white
+R - red
+B - blue
+
+Autoresponder:
+1 - show only by autorespond
+0 - show in both modes
+
+Comparison for autoresponder:
+0 - character search (case insensitive, can find 'brEak' in 'breakfast')
+1 - character search (case sensitive, can't find 'brEak' in 'breakfast')
+2 - search for a single word (case insensitive, can find 'hoMe' in 'home')
+3 - search for a single word (case sensitive, can't find 'hoMe' in 'home')
+
+Autoresponder pattern:
+Word/phrase for triggering autorespond. You can specify several words / phrases, separated by a symbol |
+Example: "hello|hey|hi"
+
+Message:
+Message itself, or ML-key from 'reklama.txt', named like 'REKLAMA_KEY'.
+You can also use wildcard patterns that will be replaced with relevant data.
+
+List of wildcard patterns:
+#hostname# - server name
+#maxplayers# - max players
+#numplayers# - current players count
+#server_ip# - server address as IP:PORT
+#mapname# - current mapname
+#contact# - 'sv_contact' cvar value
+#timeleft# - remaining game time
+#name# - player name
+#steamid# - player steamid
+#ip# - player IP

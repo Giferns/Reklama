@@ -1,0 +1,17 @@
+[ru]
+REKLAMA_STATE = Показ рекламы
+REKLAMA_OFF = отключён
+REKLAMA_ON = включён
+REKLAMA_KEY_1 = ^4* ^1Пример сообщения через ML-ключ. Ваш ник: ^4#name#
+
+[en]
+REKLAMA_STATE = Advertising
+REKLAMA_OFF = disabled
+REKLAMA_ON = enabled
+REKLAMA_KEY_1 = ^4* ^1ML-based message example. Your nick is ^4#name#
+
+[de]
+REKLAMA_STATE = Werbung
+REKLAMA_OFF = ausgeschaltet
+REKLAMA_ON = eingeschaltet
+REKLAMA_KEY_1 = ^4* ^1Beispiel einer Nachricht über einen ML-Schlüssel. Dein Nick lautet ^4#name#
