@@ -104,9 +104,14 @@
 				* Minor logic improvements
 			* Fixed:
 				* Wrong applied cvar values from autocfg due to setting task in plugin_cfg()
+		31.05.2025:
+			* Added:
+				* Separate cvar reklama_for_all_hud for hud messages
+			* Changed:
+				* Cvar reklama_for_all renamed to reklama_for_all_chat so now we got two separate cvars for two types of messages
 */
 
-new const PLUGIN_DATE[] = "30.05.2025"
+new const PLUGIN_DATE[] = "31.05.2025"
 
 /* ---------------------- SETTINGS START ---------------------- */
 
@@ -204,7 +209,8 @@ const TASKID_TIMER = 1337
 enum _:CVAR_ENUM {
 	Float:CVAR__FREQ_MIN,
 	Float:CVAR__FREQ_MAX,
-	CVAR__FOR_ALL,
+	CVAR__FOR_ALL_CHAT,
+	CVAR__FOR_ALL_HUD,
 	CVAR__MODE,
 	CVAR__SOUND_FOR_ALL,
 	CVAR__HUD_SETTINGS[32]
@@ -729,11 +735,7 @@ public func_PrintMessage(iTaskID) {
 
 	new pPlayers[MAX_PLAYERS], iPlCount, pPlayer
 
-	get_players_ex( pPlayers, iPlCount, g_eCvar[CVAR__FOR_ALL] ?
-		GetPlayers_ExcludeBots|GetPlayers_ExcludeHLTV
-			:
-		GetPlayers_ExcludeBots|GetPlayers_ExcludeHLTV|GetPlayers_ExcludeAlive
-	);
+	get_players_ex(pPlayers, iPlCount, GetPlayers_ExcludeBots|GetPlayers_ExcludeHLTV)
 
 	if(!g_eMsgData[MSG_IS_LANG_KEY] && !g_eMsgData[MSG_PATTERN_BITSUM]) {
 		copy(g_szMsg, chx(g_szMsg), g_eMsgData[MSG_BODY])
@@ -767,6 +769,10 @@ public func_PrintMessage(iTaskID) {
 
 	switch(g_eMsgData[MSG_TYPE]) {
 		case TYPE__HUD, TYPE__HUD_NOT_FOR_START: {
+			if(!g_eCvar[CVAR__FOR_ALL_HUD] && is_user_alive(pPlayer)) {
+				continue
+			}
+		
 			if(iChannel) {
 				set_hudmessage(iColor[0], iColor[1], iColor[2], fPos[0], fPos[1], 0, 0.0, fDuration, 0.1, 0.1, iChannel)
 				show_hudmessage(pPlayer, g_szMsg)
@@ -777,6 +783,10 @@ public func_PrintMessage(iTaskID) {
 			}
 		}
 		default: {
+			if(!g_eCvar[CVAR__FOR_ALL_CHAT] && is_user_alive(pPlayer)) {
+				continue
+			}
+		
 		#if defined SHOW_PREFIX_WITH_ADS
 			client_print_color(pPlayer, g_eMsgData[MSG_COLOR_ID], "%s^1%s", CHAT_PREFIX, g_szMsg)
 		#else
@@ -954,9 +964,13 @@ func_RegCvars() {
 		.description = "Maximal interval between automatic messages" ),
 		g_eCvar[CVAR__FREQ_MAX] );
 
-	bind_pcvar_num( create_cvar( "reklama_for_all", "1",
-		.description = "If 0, alive players do not see the automatic messages" ),
-		g_eCvar[CVAR__FOR_ALL] );
+	bind_pcvar_num( create_cvar( "reklama_for_all_chat", "1",
+		.description = "If 0, alive players will not see the automatic CHAT messages" ),
+		g_eCvar[CVAR__FOR_ALL_CHAT] );
+
+	bind_pcvar_num( create_cvar( "reklama_for_all_hud", "1",
+		.description = "If 0, alive players will not see the automatic HUD messages" ),
+		g_eCvar[CVAR__FOR_ALL_HUD] );
 
 	bind_pcvar_num( create_cvar( "reklama_mode", "0",
 		.description = "Display mode:^n\
