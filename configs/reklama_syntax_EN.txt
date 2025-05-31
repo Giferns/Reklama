@@ -1,5 +1,7 @@
 This file contains the message syntax for the 'Reklama' plugin.
 
+(*) - Only for chat messages
+
 Line format: mode type sound color autoresponder comparison "autoresponder pattern" "message"
 
 Mode:
@@ -7,10 +9,12 @@ Mode:
 any other digit - show only with the same value of the cvar 'reklama_mode'
 
 Type:
-0 - single line message
-1 - call the next line
-2 - call the next line + not for start (random start mode, see. RANDOM_START in .sma)
-3 - not for start (random start mode, see. RANDOM_START in .sma)
+0 - (*) single line message
+1 - (*) call the next line
+2 - (*) call the next line + not for start (random start mode, see. RANDOM_START in .sma)
+3 - (*) not for start (random start mode, see. RANDOM_START in .sma)
+4 - hud message
+5 - hud message (not for start)
 
 Sound:
 0 - without sound
