@@ -67,7 +67,7 @@
 				* Option 'RANDOM_FREQ'
 				* Option 'USE_SOUND'
 			Changed:
-				* client_cmd() -> func_SendAudio()
+				* client_cmd() -> SendAudio()
 				* Sound 'ambience/warn1' replaced with 'buttons/button2'
 			Removed;
 				* Option 'USE_PRECACHE'
@@ -93,14 +93,27 @@
 			Fixed:
 				* Error prevention, if last row refers to next non-existent row (multi-row messages)
 				* Handling situation, when all rows are 'autorespond only'
+		30.05.2025:
+			* Added:
+				* Ability to set autoconfig filename (value for AUTO_CFG)
+				* Ability to define hud messages (type 4 and 5; read reklama_syntax_EN.txt)
+					* Added cvar reklama_hud_settings
+			* Changed:
+				* client_authorized() -> client_putinserver()
+				* Remove unnesesary stocks and publics
+				* Minor logic improvements
+			* Fixed:
+				* Wrong applied cvar values from autocfg due to setting task in plugin_cfg()
 */
 
-new const PLUGIN_DATE[] = "20.05.2020"
+new const PLUGIN_DATE[] = "30.05.2025"
 
 /* ---------------------- SETTINGS START ---------------------- */
 
 // Create cvar config in 'amxmodx/configs/plugins', and execute it?
-#define AUTO_CFG
+// Value is the name of the config without .cfg extention.
+// Leave it as "" to use default naming (will be "plugin-%plugin_name%.cfg")
+#define AUTO_CFG ""
 
 // Hide messages that triggers autoresponder?
 // NOTE: It's recomended to place plugin in 'plugins.ini' above your chat manager
@@ -114,6 +127,9 @@ new const PLUGIN_DATE[] = "20.05.2020"
 
 // Prune vault records oldier than this value (in days)
 #define OBSOLETE_DAYS 30
+
+// Initialization delay
+#define INIT_DELAY 3.5
 
 // Chat prefix
 new const CHAT_PREFIX[] = "" // without prefix
@@ -190,7 +206,8 @@ enum _:CVAR_ENUM {
 	Float:CVAR__FREQ_MAX,
 	CVAR__FOR_ALL,
 	CVAR__MODE,
-	CVAR__SOUND_FOR_ALL
+	CVAR__SOUND_FOR_ALL,
+	CVAR__HUD_SETTINGS[32]
 }
 
 enum _:MSG_STRUCT {
@@ -199,6 +216,7 @@ enum _:MSG_STRUCT {
 	bool:IS_MULTI_MSG,
 	MSG_SOUND_ID,
 	bool:NOT_FOR_START,
+	MSG_TYPE,
 	MSG_MODE,
 	bool:AUTORESPOND_ONLY,
 	bool:MSG_IS_LANG_KEY,
@@ -229,6 +247,20 @@ enum _:PATTERNS_ENUM {
 	PATTERN__PLAYER_NAME,
 	PATTERN__PLAYER_STEAMID,
 	PATTERN__PLAYER_IP
+}
+
+enum {
+	TYPE__CHAT_DEFAULT,
+	TYPE__CHAT_WITH_NEXT,
+	TYPE__CHAT_WITH_NEXT_NOT_FOR_START,
+	TYPE__CHAT_NOT_FOR_START,
+	TYPE__HUD,
+	TYPE__HUD_NOT_FOR_START
+}
+
+enum { // values for channel arg, from cvar 'reklama_hud_settings'
+	CHANNEL__DHUD = -1,
+	CHANNEL__AUTOSELECT = 0
 }
 
 new const PATTERNS[PATTERNS_ENUM][] = {
@@ -262,8 +294,6 @@ stock g_bDisabled[MAX_PLAYERS + 1]
 stock g_hVault = INVALID_HANDLE
 stock g_iMsgIdSendAudio
 
-/* -------------------- */
-
 public plugin_precache() {
 	register_plugin("Reklama", PLUGIN_DATE, "mx?!")
 
@@ -281,8 +311,6 @@ public plugin_precache() {
 #endif
 }
 
-/* -------------------- */
-
 public plugin_init() {
 	register_dictionary(LANG_NAME)
 
@@ -297,24 +325,13 @@ public plugin_init() {
 #endif
 }
 
-/* -------------------- */
-
 public plugin_cfg() {
 	g_aAuReArray = ArrayCreate(AR_STRUCT, 1)
 	g_aMsgArray = ArrayCreate(MSG_STRUCT)
 
 	/* --- */
 
-	func_LoadMessages(MODE_AUTO)
-
-	/* --- */
-
-	// Status: Total message count, current position
-	register_srvcmd("reklama_status", "srvcmd_CmdShowStatus")
-	// Print specified message (example: reklama_show 5)
-	register_srvcmd("reklama_show", "srvcmd_CmdShowCustomMessage")
-	// Reload messages config
-	register_srvcmd("reklama_reload", "srvcmd_CmdReloadFile")
+	set_task(INIT_DELAY, "task_Init")
 
 	/* --- */
 
@@ -329,11 +346,22 @@ public plugin_cfg() {
 #endif
 }
 
-/* -------------------- */
+public task_Init() {
+	func_LoadMessages(MODE_AUTO)
+	
+	/* --- */
 
-public hook_Say(id) {
+	// Status: Total message count, current position
+	register_srvcmd("reklama_status", "srvcmd_CmdShowStatus")
+	// Print specified message (example: reklama_show 5)
+	register_srvcmd("reklama_show", "srvcmd_CmdShowCustomMessage")
+	// Reload messages config
+	register_srvcmd("reklama_reload", "srvcmd_CmdReloadFile")
+}
+
+public hook_Say(pPlayer) {
 #if defined CMD_BLOCK_AUTORESPOND
-	if(!g_iAuReCount || g_bDisabled[id]) {
+	if(!g_iAuReCount || g_bDisabled[pPlayer]) {
 #else
 	if(!g_iAuReCount) {
 #endif
@@ -402,11 +430,11 @@ public hook_Say(id) {
 			return PLUGIN_CONTINUE
 		}
 
-		func_ShowToSingle(id)
+		func_ShowToSingle(pPlayer)
 
 		while(g_eMsgData[IS_MULTI_MSG] && ++g_AuReData[POINTER] < g_iTotalMsgCount) {
 			ArrayGetArray(g_aMsgArray, g_AuReData[POINTER], g_eMsgData)
-			func_ShowToSingle(id)
+			func_ShowToSingle(pPlayer)
 		}
 
 	#if defined BLOCK_TRIGGER_MSG
@@ -419,9 +447,7 @@ public hook_Say(id) {
 	return PLUGIN_CONTINUE
 }
 
-/* -------------------- */
-
-stock func_ShowToSingle(pPlayer) {
+func_ShowToSingle(pPlayer) {
 	if(g_eMsgData[MSG_IS_LANG_KEY]) {
 		func_ReplaceML(pPlayer)
 		func_ReplacePatterns(pPlayer)
@@ -433,27 +459,75 @@ stock func_ShowToSingle(pPlayer) {
 			func_ReplacePatterns(pPlayer)
 		}
 	}
-
-#if defined SHOW_PREFIX_WITH_ADS
-	client_print_color(pPlayer, g_eMsgData[MSG_COLOR_ID], "%s^1%s", CHAT_PREFIX, g_szMsg)
-#else
-	client_print_color(pPlayer, g_eMsgData[MSG_COLOR_ID], "^1%s", g_szMsg)
-#endif
+	
+	switch(g_eMsgData[MSG_TYPE]) {
+		case TYPE__HUD, TYPE__HUD_NOT_FOR_START: {
+			new iColor[3], Float:fPos[2], Float:fDuration, iChannel
+			GetHudSettings(iColor, fPos, fDuration, iChannel)
+			
+			if(iChannel) {
+				set_hudmessage(iColor[0], iColor[1], iColor[2], fPos[0], fPos[1], 0, 0.0, fDuration, 0.1, 0.1, iChannel)
+				show_hudmessage(pPlayer, g_szMsg)
+			}
+			else {
+				set_dhudmessage(iColor[0], iColor[1], iColor[2], fPos[0], fPos[1], 0, 0.0, fDuration, 0.1, 0.1)
+				show_dhudmessage(pPlayer, g_szMsg)
+			}
+		}
+		default: {
+		#if defined SHOW_PREFIX_WITH_ADS
+			client_print_color(pPlayer, g_eMsgData[MSG_COLOR_ID], "%s^1%s", CHAT_PREFIX, g_szMsg)
+		#else
+			client_print_color(pPlayer, g_eMsgData[MSG_COLOR_ID], "^1%s", g_szMsg)
+		#endif
+		}
+	}
 
 #if defined USE_SOUND
 	if(g_eMsgData[MSG_SOUND_ID] != -1) {
-		func_SendAudio(pPlayer, g_szSounds[ g_eMsgData[MSG_SOUND_ID] ])
+		SendAudio(pPlayer, g_szSounds[ g_eMsgData[MSG_SOUND_ID] ])
 	}
 #endif
 }
 
-/* -------------------- */
+GetHudSettings(iColor[3], Float:fPos[2], &Float:fDuration, &iChannel) {
+	new szColor[3][6], szPos[2][6], szDuration[6], szChannel[6]
+
+	parse( g_eCvar[CVAR__HUD_SETTINGS],
+		szColor[0], chx(szColor[]),
+		szColor[1], chx(szColor[]),
+		szColor[2], chx(szColor[]),
+		szPos[0], chx(szPos[]),
+		szPos[1], chx(szPos[]),
+		szDuration, chx(szDuration),
+		szChannel, chx(szChannel)
+	);
+
+	for(new i; i < 3; i++) {
+		iColor[i] = str_to_num(szColor[i])
+	}
+
+	fPos[0] = str_to_float(szPos[0])
+	fPos[1] = str_to_float(szPos[1])
+
+	fDuration = str_to_float(szDuration)
+	iChannel = str_to_num(szChannel)
+
+	switch(iChannel) {
+		case CHANNEL__DHUD: {
+			iChannel = 0
+		}
+		case CHANNEL__AUTOSELECT: {
+			iChannel = -1
+		}
+	}
+}
 
 #if defined CMD_NAME
 	public clcmd_ToggleState(pPlayer) {
 		g_bDisabled[pPlayer] = !g_bDisabled[pPlayer]
 	#if defined USE_SOUND
-		func_SendAudio(pPlayer, SOUND__BLIP1)
+		SendAudio(pPlayer, SOUND__BLIP1)
 	#endif
 
 		client_print_color( pPlayer, print_team_red, "%s^1%L %s%L", CHAT_PREFIX, pPlayer, "REKLAMA_STATE",
@@ -476,22 +550,17 @@ stock func_ShowToSingle(pPlayer) {
 	}
 #endif
 
-/* -------------------- */
-
-public func_LoadMessages(bool:bMode) {
+func_LoadMessages(bool:bMode) {
 	if(bMode == MODE_AUTO) {
 		new iLen = get_localinfo("amxx_configsdir", g_szFilePath, chx(g_szFilePath))
 		formatex(g_szFilePath[iLen], chx_len(g_szFilePath), "/%s", ADS_FILE_NAME)
 	}
 
-	if(!file_exists(g_szFilePath)) {
-		set_fail_state("Error, can't find '%s'", ADS_FILE_NAME)
-	}
-
 	new hFile = fopen(g_szFilePath, "r")
 
 	if(!hFile) {
-		set_fail_state("Cannot read '%s' (wrong chmod?)", ADS_FILE_NAME)
+		set_fail_state("Can't %s '%s' !", file_exists(g_szFilePath) ? "read" : "find", ADS_FILE_NAME)
+		return
 	}
 
 	new szString[MSG_LEN * 2], szMode[3], szType[3], szSound[3],
@@ -547,28 +616,37 @@ public func_LoadMessages(bool:bMode) {
 		}
 
 		g_eMsgData[MSG_MODE] = str_to_num(szMode)
+		g_eMsgData[MSG_TYPE] = str_to_num(szType)
 
 	#if defined RANDOM_START
-		switch(szType[0]) {
-			case '0': {
+		switch(g_eMsgData[MSG_TYPE]) {
+			case 0: {
 				g_eMsgData[IS_MULTI_MSG] = false
 				g_eMsgData[NOT_FOR_START] = false
 			}
-			case '1': {
+			case 1: {
 				g_eMsgData[IS_MULTI_MSG] = true
 				g_eMsgData[NOT_FOR_START] = false
 			}
-			case '2': {
+			case 2: {
 				g_eMsgData[IS_MULTI_MSG] = true
 				g_eMsgData[NOT_FOR_START] = true
 			}
-			case '3': {
+			case 3: {
+				g_eMsgData[IS_MULTI_MSG] = false
+				g_eMsgData[NOT_FOR_START] = true
+			}
+			case 4: {
+				g_eMsgData[IS_MULTI_MSG] = false
+				g_eMsgData[NOT_FOR_START] = false
+			}
+			case 5: {
 				g_eMsgData[IS_MULTI_MSG] = false
 				g_eMsgData[NOT_FOR_START] = true
 			}
 		}
 	#else
-		g_eMsgData[IS_MULTI_MSG] = (szType[0] == '1' || szType[0] == '2') ? true : false
+		g_eMsgData[IS_MULTI_MSG] = (g_eMsgData[MSG_TYPE] == 1 || g_eMsgData[MSG_TYPE] == 2) ? true : false
 	#endif
 
 		g_eMsgData[MSG_SOUND_ID] = str_to_num(szSound) - 1
@@ -612,15 +690,13 @@ public func_LoadMessages(bool:bMode) {
 			break
 		}
 	#endif
-		func_SetTask()
+		SetTask()
 	}
 
 	if(bMode == MODE_AUTO) {
 		server_print("%s %i messages to show", PLUGIN_PREFIX, g_iTotalMsgCount)
 	}
 }
-
-/* -------------------- */
 
 public func_PrintMessage(iTaskID) {
 	if(g_iCurPos == g_iTotalMsgCount) {
@@ -641,7 +717,7 @@ public func_PrintMessage(iTaskID) {
 		}
 		else if(g_iFirstSkipPos == g_iCurPos) {
 			g_iFirstSkipPos = 0
-			func_SetTask()
+			SetTask()
 			return
 		}
 
@@ -662,6 +738,14 @@ public func_PrintMessage(iTaskID) {
 	if(!g_eMsgData[MSG_IS_LANG_KEY] && !g_eMsgData[MSG_PATTERN_BITSUM]) {
 		copy(g_szMsg, chx(g_szMsg), g_eMsgData[MSG_BODY])
 	}
+	
+	new iColor[3], Float:fPos[2], Float:fDuration, iChannel
+	
+	switch(g_eMsgData[MSG_TYPE]) {
+		case TYPE__HUD, TYPE__HUD_NOT_FOR_START: {
+			GetHudSettings(iColor, fPos, fDuration, iChannel)
+		}
+	}
 
 	for(new i; i < iPlCount; i++) {
 		pPlayer = pPlayers[i]
@@ -681,11 +765,25 @@ public func_PrintMessage(iTaskID) {
 		func_ReplacePatterns(pPlayer)
 	}
 
-	#if defined SHOW_PREFIX_WITH_ADS
-		client_print_color(pPlayer, g_eMsgData[MSG_COLOR_ID], "%s^1%s", CHAT_PREFIX, g_szMsg)
-	#else
-		client_print_color(pPlayer, g_eMsgData[MSG_COLOR_ID], "^1%s", g_szMsg)
-	#endif
+	switch(g_eMsgData[MSG_TYPE]) {
+		case TYPE__HUD, TYPE__HUD_NOT_FOR_START: {
+			if(iChannel) {
+				set_hudmessage(iColor[0], iColor[1], iColor[2], fPos[0], fPos[1], 0, 0.0, fDuration, 0.1, 0.1, iChannel)
+				show_hudmessage(pPlayer, g_szMsg)
+			}
+			else {
+				set_dhudmessage(iColor[0], iColor[1], iColor[2], fPos[0], fPos[1], 0, 0.0, fDuration, 0.1, 0.1)
+				show_dhudmessage(pPlayer, g_szMsg)
+			}
+		}
+		default: {
+		#if defined SHOW_PREFIX_WITH_ADS
+			client_print_color(pPlayer, g_eMsgData[MSG_COLOR_ID], "%s^1%s", CHAT_PREFIX, g_szMsg)
+		#else
+			client_print_color(pPlayer, g_eMsgData[MSG_COLOR_ID], "^1%s", g_szMsg)
+		#endif
+		}
+	}
 
 	#if defined USE_SOUND
 		if(g_eMsgData[MSG_SOUND_ID] != -1) {
@@ -693,7 +791,7 @@ public func_PrintMessage(iTaskID) {
 				continue
 			}
 
-			func_SendAudio(pPlayer, g_szSounds[ g_eMsgData[MSG_SOUND_ID] ])
+			SendAudio(pPlayer, g_szSounds[ g_eMsgData[MSG_SOUND_ID] ])
 		}
 	#endif
 	}
@@ -703,25 +801,19 @@ public func_PrintMessage(iTaskID) {
 		return
 	}
 
-	func_SetTask()
+	SetTask()
 }
 
-/* -------------------- */
-
-func_SetTask() {
+SetTask() {
 	if(g_iAutoMsgCount) {
 		set_task(random_float(g_eCvar[CVAR__FREQ_MIN], g_eCvar[CVAR__FREQ_MAX]), "func_PrintMessage", TASKID_TIMER)
 	}
 }
 
-/* -------------------- */
-
 public srvcmd_CmdShowStatus() {
 	server_print("%s Total messages: %i | Last printed: #%i", PLUGIN_PREFIX, g_iTotalMsgCount, g_iCurPos)
 	return PLUGIN_HANDLED
 }
-
-/* -------------------- */
 
 public srvcmd_CmdShowCustomMessage() {
 	new iMsgID = read_argv_int(1)
@@ -739,8 +831,6 @@ public srvcmd_CmdShowCustomMessage() {
 	return PLUGIN_HANDLED
 }
 
-/* -------------------- */
-
 public srvcmd_CmdReloadFile() {
 	remove_task(TASKID_TIMER)
 	ArrayClear(g_aMsgArray)
@@ -757,9 +847,7 @@ public srvcmd_CmdReloadFile() {
 	return PLUGIN_HANDLED
 }
 
-/* -------------------- */
-
-stock func_ReplacePatterns(pPlayer) {
+func_ReplacePatterns(pPlayer) {
 	if(CheckPatternBit(PATTERN__HOSTNAME)) {
 		get_user_name(0, g_szBuffer, chx(g_szBuffer))
 		replace_stringex(g_szMsg, chx(g_szMsg), PATTERNS[PATTERN__HOSTNAME], g_szBuffer)
@@ -811,9 +899,7 @@ stock func_ReplacePatterns(pPlayer) {
 	}
 }
 
-/* -------------------- */
-
-stock func_FindPatterns() {
+func_FindPatterns() {
 	for(new i; i < PATTERNS_ENUM; i++) {
 		if(contain(g_eMsgData[MSG_BODY], PATTERNS[i]) != -1) {
 			SetPatternBit(i)
@@ -821,13 +907,9 @@ stock func_FindPatterns() {
 	}
 }
 
-/* -------------------- */
-
-stock func_ReplaceML(pPlayer) {
+func_ReplaceML(pPlayer) {
 	formatex(g_szMsg, chx(g_szMsg), "%L", pPlayer, g_eMsgData[MSG_BODY])
 }
-
-/* -------------------- */
 
 public plugin_end() {
 	if(g_aMsgArray) {
@@ -845,26 +927,23 @@ public plugin_end() {
 #endif
 }
 
-/* -------------------- */
-
 #if defined CMD_NAME
-	public client_authorized(pPlayer, const szAuthID[]) {
+	public client_putinserver(pPlayer) {
 		if(g_hVault == INVALID_HANDLE) {
 			g_bDisabled[pPlayer] = false
 			return
 		}
 
-		g_bDisabled[pPlayer] = bool:nvault_get(g_hVault, szAuthID)
+		get_user_authid(pPlayer, g_szBuffer, chx(g_szBuffer))
+		g_bDisabled[pPlayer] = bool:nvault_get(g_hVault, g_szBuffer)
 
 	#if defined OBSOLETE_DAYS
 		if(g_bDisabled[pPlayer]) {
-			nvault_touch(g_hVault, szAuthID)
+			nvault_touch(g_hVault, g_szBuffer)
 		}
 	#endif
 	}
 #endif
-
-/* -------------------- */
 
 func_RegCvars() {
 	bind_pcvar_float( create_cvar( "reklama_freq_min", "60",
@@ -890,15 +969,18 @@ func_RegCvars() {
 		0 - Play only for dead players (autorespond sounds will be played anyway)^n\
 		1 - Play sounds for all players" ),
 		g_eCvar[CVAR__SOUND_FOR_ALL] );
+		
+	bind_pcvar_string( create_cvar( "reklama_hud_settings", "0 255 0 -1.0 0.7 3.5 0",
+		.description = "HUD settings ( https://dev-cs.ru/hud/index.html ):^n\
+		R G B X Y CHANNEL(1-4, 0 to autoselect, -1 to use DHUD)" ),
+		g_eCvar[CVAR__HUD_SETTINGS], chx(g_eCvar[CVAR__HUD_SETTINGS] ) );
 
 #if defined AUTO_CFG
-	AutoExecConfig()
+	AutoExecConfig(.name = AUTO_CFG)
 #endif
 }
 
-/* -------------------- */
-
-stock func_SendAudio(pPlayer, const szSample[]) {
+SendAudio(pPlayer, const szSample[]) {
 	message_begin(MSG_ONE_UNRELIABLE, g_iMsgIdSendAudio, .player = pPlayer)
 	write_byte(pPlayer)
 	write_string(szSample)
