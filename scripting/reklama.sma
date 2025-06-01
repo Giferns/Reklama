@@ -109,9 +109,11 @@
 				* Separate cvar reklama_for_all_hud for hud messages
 			* Changed:
 				* Cvar reklama_for_all renamed to reklama_for_all_chat so now we got two separate cvars for two types of messages
+		01.06.2025:
+			* Fix reklama_hud_settings cvar description
 */
 
-new const PLUGIN_DATE[] = "31.05.2025"
+new const PLUGIN_DATE[] = "01.06.2025"
 
 /* ---------------------- SETTINGS START ---------------------- */
 
@@ -986,7 +988,7 @@ func_RegCvars() {
 		
 	bind_pcvar_string( create_cvar( "reklama_hud_settings", "0 255 0 -1.0 0.7 3.5 0",
 		.description = "HUD settings ( https://dev-cs.ru/hud/index.html ):^n\
-		R G B X Y CHANNEL(1-4, 0 to autoselect, -1 to use DHUD)" ),
+		R G B X Y DURATION CHANNEL(1-4, 0 to autoselect, -1 to use DHUD)" ),
 		g_eCvar[CVAR__HUD_SETTINGS], chx(g_eCvar[CVAR__HUD_SETTINGS] ) );
 
 #if defined AUTO_CFG
